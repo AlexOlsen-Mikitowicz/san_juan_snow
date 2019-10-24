@@ -1,8 +1,10 @@
 ---
 title: "Web Scraping"
-author: "Matthew Ross"
+author: "Alex Olsen-Mikitowicz"
 date: "10/20/2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -10,6 +12,7 @@ library(rvest)
 library(tidyverse)
 library(lubridate)
 library(readxl)
+library(pdftools)
 
 ```
 
@@ -70,6 +73,11 @@ file_names <- paste0('data/',dataset)
 #   download.file(links[i],destfile=file_names[i])
 # }
 
+
+downloaded <- file.exists(file_names)
+
+evaluate <- !all(downloaded)
+
 ```
 
 ### Download data in a map
@@ -77,8 +85,10 @@ file_names <- paste0('data/',dataset)
 ```{r}
 
 #Map version of the same forloop (downloading 4 files)
-map2(links,file_names,download.file)
 
+if(evaluate == T){
+  map2(links,file_names,download.file)
+} else{print("data already updated to current")}
 ```
 
 ## Data read-in 
@@ -149,6 +159,13 @@ the `SASP forcing` and `SBSP_forcing` meteoroligical datasets.
 
 ```{r}
 
+links_forcing <- webpage %>%
+  html_nodes('a') %>%
+  .[grepl('forcing',.)] %>%
+  html_attr('href')
+
+#links_forcing
+
 ```
 
 ## Download the meteorological data
@@ -159,6 +176,19 @@ You can use a for loop or a map function.
 
 ```{r}
 
+#Grab only the name of the file by splitting out on forward slashes
+splits_forcing <- str_split_fixed(links_forcing,'/',4)
+
+#Keep only the 8th column
+dataset_forcing <- splits_forcing[,4] 
+
+#generate a file list for where the data goes
+#file_names_forcing <- paste0('data/',dataset_forcing)
+
+
+#Map version of the same forloop (downloading 4 files)
+map2(links_forcing,dataset_forcing,download.file)
+
 ```
 
 ## Read in the data
@@ -168,12 +198,34 @@ column to the data.
 
 ```{r}
 
+headers <- pdf_text("https://snowstudies.org/data/Serially-Complete-Metadata-text08.pdf") %>%
+  readr::read_lines(.) %>%
+  trimws(.) %>%
+  str_split_fixed(.,"\\.",2) %>%
+  .[,2] %>%
+  .[1:26]
+  
+headers1 <- c(headers,"Site")
+
+forcing_reader <- function(file){
+  name = str_split_fixed(file,'-',4)[,3]
+    #gsub('_24hr.csv','',.)
+  df <- read_table(file, col_names = FALSE) %>%
+    mutate(site = name)
+}
+
+
 ```
 
 
 Use the `map` function to read in both meteorological files.
 
 ```{r}
+
+forcing_data_full <- map_dfr(dataset_forcing,forcing_reader)
+
+forcing_data_full_colnames <- setNames(forcing_data_full, headers1)
+names(forcing_data_full_colnames)
 
 ```
 
